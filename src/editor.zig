@@ -305,8 +305,7 @@ pub const Editor = struct {
 
             _ = ncurses.wclear(self.buf_win);
             _ = ncurses.mvwprintw(self.buf_win, 0, 0, "filename > ");
-            _ = ncurses.wprintw(self.buf_win, "%.*s", p1.len, @as([*c]const u8, @ptrCast(p1)));
-            _ = ncurses.wprintw(self.buf_win, "%.*s", p2.len, @as([*c]const u8, @ptrCast(p2)));
+            _ = ncurses.wprintw(self.buf_win, "%.*s%.*s", p1.len, @as([*c]const u8, @ptrCast(p1)), p2.len, @as([*c]const u8, @ptrCast(p2)));
             _ = ncurses.wmove(self.buf_win, 0, @intCast(x));
             _ = ncurses.wrefresh(self.buf_win);
         }
