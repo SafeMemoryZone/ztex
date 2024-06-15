@@ -5,7 +5,7 @@ const ncurses = @cImport({
 });
 
 fn is_valid_char(key: c_int) bool {
-    return key >= ' ' and key <= '~';
+    return key >= ' ' and key <= '~' or key == '\n';
 }
 
 fn is_delete(key: c_int) bool {
@@ -102,19 +102,21 @@ pub const Editor = struct {
     }
 
     pub fn handle_key(self: *Editor, key: c_int) std.mem.Allocator.Error!void {
-        if (key == ncurses.KEY_LEFT) {
-            self.handle_key_left();
-        } else if (key == ncurses.KEY_RIGHT) {
-            self.handle_key_right();
-        } else if (key == ncurses.KEY_UP) {
-            self.handle_key_up();
-        } else if (key == ncurses.KEY_DOWN) {
-            self.handle_key_down();
-        } else if (is_delete(key)) {
+        var found = true;
+        switch (key) {
+            ncurses.KEY_LEFT => self.handle_key_left(),
+            ncurses.KEY_RIGHT => self.handle_key_right(),
+            ncurses.KEY_UP => self.handle_key_up(),
+            ncurses.KEY_DOWN => self.handle_key_down(),
+            ctrl('q') => self.requested_quit = true,
+            else => found = false,
+        }
+        if (found) {
+            return;
+        }
+        if (is_delete(key)) {
             try self.handle_delete();
-        } else if (key == ctrl('q')) {
-            self.requested_quit = true;
-        } else if (is_valid_char(key) or key == '\n') {
+        } else if (is_valid_char(key)) {
             try self.handle_insert(@intCast(key));
         }
     }
@@ -243,48 +245,58 @@ pub const Editor = struct {
 
         while (true) {
             key = ncurses.wgetch(self.buf_win);
-            if (key == ctrl('q')) {
-                break;
-            } else if (key == '\n') {
-                if (gbuf.buf.len - gbuf.gap_len == 0) {
+            var found = true;
+
+            switch (key) {
+                ncurses.KEY_LEFT => {
+                    if (pos_idx > 0) {
+                        pos_idx -= 1;
+                    }
+                },
+                ncurses.KEY_RIGHT => {
+                    if (pos_idx < gbuf.buf.len - gbuf.gap_len) {
+                        pos_idx += 1;
+                    }
+                },
+                ctrl('q') => break,
+                '\n' => {
+                    if (gbuf.buf.len - gbuf.gap_len == 0) {
+                        self.requested_quit = false;
+                        return false;
+                    }
+
+                    var file_path = try self.alloc.alloc(u8, gbuf.buf.len - gbuf.gap_len);
+                    defer self.alloc.free(file_path);
+
+                    const gap_end_idx: usize = gbuf.gap_begin_idx + gbuf.gap_len;
+                    @memcpy(file_path[0..gbuf.gap_begin_idx], gbuf.buf[0..gbuf.gap_begin_idx]);
+                    @memcpy(file_path[gbuf.gap_begin_idx..], gbuf.buf[gap_end_idx..]);
+
+                    const f = try std.fs.cwd().createFile(file_path, .{});
+                    defer f.close();
+
+                    try self.save_buf_to(f);
+
+                    return true;
+                },
+                else => found = false,
+            }
+
+            if (!found) {
+                if (is_delete(key)) {
+                    if (pos_idx > 0) {
+                        gbuf.set_pos_idx(pos_idx);
+                        gbuf.delete();
+                        pos_idx -= 1;
+                    }
+                } else if (is_valid_char(key)) {
+                    gbuf.set_pos_idx(pos_idx);
+                    try gbuf.insert(@intCast(key));
+                    pos_idx += 1;
+                } else {
                     self.requested_quit = false;
                     return false;
                 }
-
-                var file_path = try self.alloc.alloc(u8, gbuf.buf.len - gbuf.gap_len);
-                defer self.alloc.free(file_path);
-
-                const gap_end_idx: usize = gbuf.gap_begin_idx + gbuf.gap_len;
-                @memcpy(file_path[0..gbuf.gap_begin_idx], gbuf.buf[0..gbuf.gap_begin_idx]);
-                @memcpy(file_path[gbuf.gap_begin_idx..], gbuf.buf[gap_end_idx..]);
-
-                const f = try std.fs.cwd().createFile(file_path, .{});
-                defer f.close();
-
-                try self.save_buf_to(f);
-
-                return true;
-            } else if (key == ncurses.KEY_LEFT) {
-                if (pos_idx > 0) {
-                    pos_idx -= 1;
-                }
-            } else if (key == ncurses.KEY_RIGHT) {
-                if (pos_idx < gbuf.buf.len - gbuf.gap_len) {
-                    pos_idx += 1;
-                }
-            } else if (is_delete(key)) {
-                if (pos_idx > 0) {
-                    gbuf.set_pos_idx(pos_idx);
-                    gbuf.delete();
-                    pos_idx -= 1;
-                }
-            } else if (is_valid_char(key)) {
-                gbuf.set_pos_idx(pos_idx);
-                try gbuf.insert(@intCast(key));
-                pos_idx += 1;
-            } else {
-                self.requested_quit = false;
-                return false;
             }
 
             const p1 = gbuf.buf[0..gbuf.gap_begin_idx];
