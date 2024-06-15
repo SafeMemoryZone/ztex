@@ -20,7 +20,7 @@ $ ./ztex [<file_to_edit>]
 ## Controls
 
 - Use the arrow keys to move
-- Use '<ctrl> + q' to quit the editor (a prompt will appear asking for the filename - press '<ctrl> + q' again to quit)
+- Use `ctrl + q` to quit the editor (a prompt will appear asking for the filename - press `ctrl + q` again to quit)
 
 ## Note
 
